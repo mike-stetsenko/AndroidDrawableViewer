@@ -16,5 +16,6 @@ class Constants {
 
         const val PNG_SUFFIX = ".png"
         const val JPEG_SUFFIX = ".jpg"
+        const val XML_SUFFIX = ".xml"
     }
 }

@@ -60,7 +60,8 @@ class DrawableViewer(private val project: Project) : SimpleToolWindowPanel(true,
     }
 
     private fun isImageFile(fileName: String): Boolean =
-            fileName.endsWith(Constants.PNG_SUFFIX) || fileName.endsWith(Constants.JPEG_SUFFIX)
+            fileName.endsWith(Constants.PNG_SUFFIX) || fileName.endsWith(Constants.JPEG_SUFFIX) ||
+                    fileName.endsWith(Constants.XML_SUFFIX)
 
     private fun getNewFileList(path: String, config: PluginConfig): List<File> {
         val targetDir = File(path)
