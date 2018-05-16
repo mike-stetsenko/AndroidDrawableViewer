@@ -1,17 +1,12 @@
 import org.apache.commons.io.FileUtils
-import org.w3c.dom.Document
-import org.w3c.dom.Element
+import org.jdom2.input.SAXBuilder
+import org.jdom2.output.XMLOutputter
+import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.StringBufferInputStream
-import java.io.StringWriter
+import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Paths
-import javax.xml.parsers.DocumentBuilder
-import javax.xml.transform.OutputKeys
-import javax.xml.transform.Transformer
-import javax.xml.transform.TransformerFactory
-import javax.xml.transform.dom.DOMSource
-import javax.xml.transform.stream.StreamResult
+
 
 data class ImageParams(val width: String, val height: String, val content: String, val color: String)
 
@@ -45,21 +40,18 @@ object VdXmlToSvg {
         val filteredContent = content.substring(content.indexOf("vector") - 1, content.length)
             .replace("\n|\r".toRegex(), "")
 
-        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
-        val dBuilder: DocumentBuilder? = factory.newDocumentBuilder()
+        val builder = SAXBuilder()
 
-        val doc: Document? = dBuilder?.parse(StringBufferInputStream(filteredContent))
+        val doc = builder.build(ByteArrayInputStream(filteredContent.toByteArray(Charset.forName("UTF-8"))))
 
-        doc?.documentElement?.normalize()
-
-        val vector = doc?.firstChild as? Element
-        val path = vector?.getElementsByTagName("path")?.item(0) as Element
+        val vector = doc.rootElement
+        val path = vector.getChild("path")
 
         return ImageParams(
-            vector.getAttribute("android:width").replace("dp", ""),
-            vector.getAttribute("android:height").replace("dp", ""),
-            path.getAttribute("android:pathData"),
-            path.getAttribute("android:fillColor")
+            vector.attributes.first { it.name.toString() == "width" }.value.replace("dp", ""),
+            vector.attributes.first { it.name.toString() == "height" }.value.replace("dp", ""),
+            path.attributes.first { it.name.toString() == "pathData" }.value,
+            path.attributes.first { it.name.toString() == "fillColor" }.value
         )
     }
 
@@ -68,42 +60,19 @@ object VdXmlToSvg {
 
         val title = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">"
 
-        // root elements
-        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
-        val doc = factory.newDocumentBuilder().newDocument()
-        val rootElement = doc?.createElement("svg") ?: return ""
-        doc.appendChild(rootElement) ?: return ""
+        val svg = org.jdom2.Element("svg", "http://www.w3.org/2000/svg")
+        val root = org.jdom2.Document(svg)
+        svg.setAttribute("width", imageParams.width)
+        svg.setAttribute("height", imageParams.height)
+        svg.setAttribute("viewBox", "0 0 " + imageParams.width + " " + imageParams.height)
 
-        // setup basic svg info
-        with(rootElement) {
-            setAttribute("xmlns", "http://www.w3.org/2000/svg")
-            setAttribute("width", imageParams.width)
-            setAttribute("height", imageParams.height)
-            setAttribute("viewBox", "0 0 " + imageParams.width + " " + imageParams.height)
+        val path = org.jdom2.Element("path")
+        path.setAttribute("d", imageParams.content)
+        if (imageParams.color.isNotBlank()) {
+            path.setAttribute("fill", imageParams.color)
         }
+        root.rootElement.addContent(path)
 
-        val path = doc.createElement("path").apply {
-
-            setAttribute("d", imageParams.content)
-
-            if (imageParams.color.isNotBlank()) {
-                setAttribute("fill", imageParams.color)
-            }
-        }
-
-        rootElement.appendChild(path)
-
-        return title + docToString(doc)
-    }
-
-    private fun docToString(doc: Document): String {
-        val transformer: Transformer? = TransformerFactory.newInstance().newTransformer()
-
-        transformer?.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
-
-        val writer = StringWriter()
-        transformer?.transform(DOMSource(doc), StreamResult(writer))
-
-        return writer.buffer.toString().replace("\n|\r".toRegex(), "")
+        return XMLOutputter().outputString(root).replace("xmlns=\"\" ","")
     }
 }
