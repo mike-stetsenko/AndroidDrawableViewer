@@ -1,7 +1,7 @@
 package com.androhi.androiddrawableviewer.utils
 
+import VdXmlToSvg.vdXmlToSvg
 import com.androhi.androiddrawableviewer.Constants.Companion.XML_SUFFIX
-import com.androhi.androiddrawableviewer.utils.VdXmlToSvg.vdXmlToSvg
 import java.awt.Image
 import java.io.File
 import java.io.IOException
@@ -16,12 +16,15 @@ class IconUtils {
         fun createOriginalIcon(iconFilePath: String): Icon? = createIcon(iconFilePath)
 
         private fun createIcon(iconFilePath: String, size: Int = 0): Icon? {
-            val imageFile = File(iconFilePath)
+            val imageFile = File(iconFilePath).let {
+                when {
+                    iconFilePath.endsWith(XML_SUFFIX) -> vdXmlToSvg(it)
+                    else -> it
+                }
+            } ?: return null
+
             return try {
-                val originalImage = when {
-                    iconFilePath.endsWith(XML_SUFFIX) -> vdXmlToSvg(imageFile)
-                    else -> ImageIO.read(imageFile)
-                } ?: return null
+                val originalImage = ImageIO.read(imageFile)
 
                 if (size > 0) {
                     val resizedImage = originalImage.getScaledInstance(size, size, Image.SCALE_DEFAULT)

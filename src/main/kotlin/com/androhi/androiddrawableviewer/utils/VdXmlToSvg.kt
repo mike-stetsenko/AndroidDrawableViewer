@@ -1,17 +1,9 @@
-package com.androhi.androiddrawableviewer.utils
-
-import org.apache.batik.dom.svg.SVGDOMImplementation
-import org.apache.batik.transcoder.TranscoderException
-import org.apache.batik.transcoder.TranscoderInput
-import org.apache.batik.transcoder.TranscoderOutput
-import org.apache.batik.transcoder.TranscodingHints
-import org.apache.batik.transcoder.image.ImageTranscoder
-import org.apache.batik.util.SVGConstants
 import org.apache.commons.io.FileUtils
 import org.w3c.dom.Document
 import org.w3c.dom.Element
-import java.awt.image.BufferedImage
-import java.io.*
+import java.io.File
+import java.io.StringBufferInputStream
+import java.io.StringWriter
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.xml.parsers.DocumentBuilder
@@ -25,11 +17,16 @@ data class ImageParams(val width: String, val height: String, val content: Strin
 
 object VdXmlToSvg {
 
-    fun vdXmlToSvg(file: File): BufferedImage? {
+    fun vdXmlToSvg(file: File): File? {
 
         val vdContent = readStringFromFile(file.path)
 
-        val imageParams = VdXmlToSvg.parseVD(vdContent) ?: return null
+        val imageParams: ImageParams
+        try {
+            imageParams = parseVD(vdContent)
+        } catch (e: Exception) {
+            return null
+        }
 
         val svgContent = createSvg(imageParams)
 
@@ -37,76 +34,16 @@ object VdXmlToSvg {
 
         FileUtils.writeStringToFile(svgFile, svgContent)
 
-        return rasterize(svgFile)
+        return svgFile
     }
 
     private fun readStringFromFile(filePath: String): String {
         return String(Files.readAllBytes(Paths.get(filePath)))
     }
 
-    @Throws(IOException::class)
-    private fun rasterize(svgFile: File): BufferedImage {
-
-        val imagePointer = arrayOfNulls<BufferedImage>(1)
-
-        // Rendering hints can't be set programatically, so
-        // we override defaults with a temporary stylesheet.
-        // These defaults emphasize quality and precision, and
-        // are more similar to the defaults of other SVG viewers.
-        // SVG documents can still override these defaults.
-        val css = "svg {" +
-                "shape-rendering: geometricPrecision;" +
-                "text-rendering:  geometricPrecision;" +
-                "color-rendering: optimizeQuality;" +
-                "image-rendering: optimizeQuality;" +
-                "}"
-        val cssFile = File.createTempFile("batik-default-override-", ".css")
-        FileUtils.writeStringToFile(cssFile, css)
-
-        val transcoderHints = TranscodingHints()
-
-        transcoderHints[ImageTranscoder.KEY_XML_PARSER_VALIDATING] = java.lang.Boolean.FALSE
-        transcoderHints[ImageTranscoder.KEY_DOM_IMPLEMENTATION] = SVGDOMImplementation.getDOMImplementation()
-        transcoderHints[ImageTranscoder.KEY_DOCUMENT_ELEMENT_NAMESPACE_URI] = SVGConstants.SVG_NAMESPACE_URI
-        transcoderHints[ImageTranscoder.KEY_DOCUMENT_ELEMENT] = "svg"
-        transcoderHints[ImageTranscoder.KEY_USER_STYLESHEET_URI] = cssFile.toURI().toString()
-
-        try {
-
-            val input = TranscoderInput(FileInputStream(svgFile))
-
-            val t = object : ImageTranscoder() {
-
-                override fun createImage(w: Int, h: Int): BufferedImage {
-                    return BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-                }
-
-                @Throws(TranscoderException::class)
-                override fun writeImage(image: BufferedImage?, out: TranscoderOutput?) {
-                    imagePointer[0] = image
-                }
-            }
-            t.transcodingHints = transcoderHints
-            t.transcode(input, null)
-        } catch (ex: TranscoderException) {
-            // Requires Java 6
-            ex.printStackTrace()
-            throw IOException("Couldn't convert $svgFile")
-        } finally {
-            cssFile.delete()
-        }
-
-        return imagePointer[0]!!
-    }
-
-    private fun parseVD(content: String): ImageParams? {
-        val filteredContent: String
-        try {
-            filteredContent = content.substring(content.indexOf("vector") - 1, content.length)
-                    .replace("\n|\r".toRegex(), "")
-        } catch (e: Exception) {
-            return null
-        }
+    private fun parseVD(content: String): ImageParams {
+        val filteredContent = content.substring(content.indexOf("vector") - 1, content.length)
+            .replace("\n|\r".toRegex(), "")
 
         val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
         val dBuilder: DocumentBuilder? = factory.newDocumentBuilder()
@@ -119,10 +56,10 @@ object VdXmlToSvg {
         val path = vector?.getElementsByTagName("path")?.item(0) as Element
 
         return ImageParams(
-                vector.getAttribute("android:width").replace("dp", ""),
-                vector.getAttribute("android:height").replace("dp", ""),
-                path.getAttribute("android:pathData"),
-                path.getAttribute("android:fillColor")
+            vector.getAttribute("android:width").replace("dp", ""),
+            vector.getAttribute("android:height").replace("dp", ""),
+            path.getAttribute("android:pathData"),
+            path.getAttribute("android:fillColor")
         )
     }
 
